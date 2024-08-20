@@ -1,4 +1,5 @@
 import { useSocket } from "@/hooks/socket";
+import { CustomWebrtcEvent } from "@/types";
 import * as React from "react";
 import { Socket } from "socket.io-client";
 
@@ -16,19 +17,7 @@ const pc = new RTCPeerConnection({
   ],
   iceCandidatePoolSize: 10,
 });
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 const event_prefix = "webrtc-custom-event-";
-// type CustomWebrtcEvent = Event & { data?: string };
-
-class CustomWebrtcEvent extends Event {
-  constructor(
-    public label: string,
-    public data: unknown
-  ) {
-    super(label);
-  }
-}
 
 function register_icecandidate_events(socket: Socket) {
   // send our ice candidate
@@ -65,9 +54,10 @@ function init_webrtc(socket: Socket) {
 
     ev.channel.addEventListener("message", (ev) => {
       if (!ev.data) return;
-      const decoded = decoder.decode(ev.data);
-      const resp = JSON.parse(decoded) as { label: string; data: unknown };
-      const event = new CustomWebrtcEvent(resp.label, resp.data);
+      const buffer = [...new Uint8Array(ev.data)];
+      const index = buffer.pop()!;
+      const label = window.labels[index]!;
+      const event = new CustomWebrtcEvent(label, buffer);
       document.dispatchEvent(event);
     });
   });
@@ -96,8 +86,12 @@ function init_webrtc(socket: Socket) {
   });
 }
 
-export function useWebrtcChannel<T>(label: string, rx: (data: T) => void) {
+export function useWebrtcChannel<T extends number[]>(
+  label: string,
+  rx: (data: T) => void
+) {
   const socket = useSocket();
+  const index = React.useMemo(() => gen_index(label), [label]);
 
   React.useEffect(() => {
     if (!socket) return;
@@ -108,17 +102,38 @@ export function useWebrtcChannel<T>(label: string, rx: (data: T) => void) {
       rx(rtcEvent.data as T);
     }
     document.addEventListener(event_prefix + label, handler);
-    return () => document.removeEventListener(event_prefix + label, handler);
-  }, [label, rx, socket]);
+    return () => {
+      document.removeEventListener(event_prefix + label, handler);
+      window.labels[index] = undefined;
+    };
+  }, [index, label, rx, socket]);
 
-  return React.useCallback(
-    (data: T) => {
-      if (window.channel && window.channel.readyState === "open") {
-        const str = JSON.stringify({ label: event_prefix + label, data });
-        const encoded = encoder.encode(str);
-        window.channel.send(encoded);
-      }
-    },
-    [label]
-  );
+  return (data: T) => {
+    if (window.channel && window.channel.readyState === "open") {
+      data.push(index);
+      const buffer = new Uint8Array(data);
+      window.channel.send(buffer);
+    }
+  };
+}
+
+function gen_index(label: string) {
+  if (!window.labels) window.labels = [];
+  let index = gen_u8();
+
+  let tried = 0;
+  while (window.labels[index] !== undefined) {
+    index = (index + 1) % u8max;
+    tried++;
+    if (tried >= u8max) {
+      throw new Error("Label buffer is full");
+    }
+  }
+  window.labels[index] = label;
+  return index;
+}
+
+const u8max = 255;
+function gen_u8() {
+  return Math.floor(Math.random() * u8max);
 }

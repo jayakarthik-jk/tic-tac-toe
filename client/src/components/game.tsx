@@ -1,35 +1,64 @@
 import Board from "@/components/board";
-import { default_level } from "@/context/level";
-import { useLevel } from "@/hooks/level";
-import { SelectHandler } from "@/types";
-import { useEffect } from "react";
-import Cursor from "./Cursor";
+import SelectHandlerProvider, { SelectHandler } from "@/context/select-handler";
+import { useWebrtcChannel } from "@/hooks/webrtc";
+import * as React from "react";
 
 export default function Game() {
-  const { level, set_level } = useLevel();
-  useEffect(() => {
+  const [total_level] = React.useState(2);
+  const [track, set_track] = React.useState<number[]>([]);
+
+  const send_track = useWebrtcChannel<number[]>(
+    "movement",
+    React.useCallback(
+      (data) => {
+        if (data.length === total_level) {
+          console.log("user selected", data, total_level);
+          set_track([]);
+        } else {
+          set_track(data);
+        }
+      },
+      [total_level]
+    )
+  );
+
+  // const [game_data, set_game_data] = React.useState<number[]>([]);
+  // const send_game_data = useWebrtcChannel<number[]>("game", set_game_data);
+
+  // Esc click handler
+  React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || level >= default_level) return;
-      set_level(level + 1);
+      set_track((track) => {
+        if (e.key !== "Escape" || track.length === 0) return track;
+        const newTrack = [...track];
+        const exiting = newTrack.pop();
+        console.log("Exiting", exiting);
+        send_track(newTrack);
+        return newTrack;
+      });
     };
     window.addEventListener("keyup", handler);
     return () => window.removeEventListener("keyup", handler);
-  }, [level, set_level]);
+  }, [send_track]);
 
-  const handle_select: SelectHandler = (index, is_primitive) => {
-    console.log(index);
-    if (!is_primitive) {
-      set_level(level - 1);
-    } else {
-      console.log("User selected", level, index);
-      set_level(default_level);
-    }
-  };
+  const handle_select: SelectHandler = React.useCallback(
+    (buf) => {
+      set_track((track) => {
+        const newTrack = [...track, buf[0]];
+        send_track(newTrack);
+        if (newTrack.length === total_level) return [];
+        return newTrack;
+      });
+    },
+    [send_track, total_level]
+  );
+  const level = total_level - track.length;
   return (
     <main className="w-svw h-svh overflow-hidden">
       <h1 className="text-center">current level {level}</h1>
-      <Board level={level} on_select={handle_select} />
-      <Cursor />
+      <SelectHandlerProvider handler={handle_select}>
+        <Board level={level} />
+      </SelectHandlerProvider>
     </main>
   );
 }

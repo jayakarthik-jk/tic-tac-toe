@@ -1,4 +1,11 @@
-export type SelectHandler = (index: number, is_primitive: boolean) => void;
+export class CustomWebrtcEvent extends Event {
+  constructor(
+    public label: string,
+    public data: unknown
+  ) {
+    super(label);
+  }
+}
 
 declare global {
   interface Window {

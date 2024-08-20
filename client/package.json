@@ -7,7 +7,7 @@
     "generate-routes": "tsr generate",
     "watch-routes": "tsr watch",
     "dev": "vite",
-    "build": "bun generate-routes && tsc -b && vite build --outDir ../server/static/",
+    "build": "bun generate-routes && tsc -b && vite build --outDir ../server/static/dist/",
     "lint": "eslint .",
     "preview": "vite preview"
   },
