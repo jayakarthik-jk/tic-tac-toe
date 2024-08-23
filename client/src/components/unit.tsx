@@ -1,5 +1,5 @@
 import { useSelecthandler } from "@/hooks/select-handler";
-import { cn, get_borders } from "@/lib/utils";
+import { cn, getBorders } from "@/lib/utils";
 import * as React from "react";
 import Board from "./board";
 
@@ -10,12 +10,9 @@ type UnitProp = {
 };
 
 export default function Unit({ track, level, primitive }: UnitProp) {
-  const borders = React.useMemo(
-    () => get_borders(track[track.length - 1]),
-    [track]
-  );
+  const borders = React.useMemo(() => getBorders(track[0]), [track]);
+  const handleSelect = useSelecthandler();
 
-  const on_select = useSelecthandler();
   return (
     <div
       className={cn(
@@ -29,7 +26,7 @@ export default function Unit({ track, level, primitive }: UnitProp) {
       )}
       onClick={(e) => {
         e.stopPropagation();
-        on_select(track);
+        handleSelect(track);
       }}
     >
       {primitive ? " " : <Board level={level - 1} track={track} />}

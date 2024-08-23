@@ -1,7 +1,8 @@
 import { useSocket } from "@/hooks/socket";
+import { CustomWebrtcEvent } from "@/types";
+import { murmur3 } from "murmurhash-js";
 import * as React from "react";
 import { Socket } from "socket.io-client";
-
 const pc = new RTCPeerConnection({
   iceServers: [
     {
@@ -16,21 +17,11 @@ const pc = new RTCPeerConnection({
   ],
   iceCandidatePoolSize: 10,
 });
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-const event_prefix = "webrtc-custom-event-";
-// type CustomWebrtcEvent = Event & { data?: string };
 
-class CustomWebrtcEvent extends Event {
-  constructor(
-    public label: string,
-    public data: unknown
-  ) {
-    super(label);
-  }
-}
+const eventPrefix = "rtc-";
+const hashBufferSize = 4;
 
-function register_icecandidate_events(socket: Socket) {
+function registerIcecandidateEvents(socket: Socket) {
   // send our ice candidate
   pc.addEventListener("icecandidate", (event) => {
     if (!event.candidate) return;
@@ -44,30 +35,36 @@ function register_icecandidate_events(socket: Socket) {
   });
 }
 
-function create_data_channel() {
+function createDataChannel() {
   const channel = pc.createDataChannel("send data channel");
   channel.binaryType = "arraybuffer";
   return channel;
 }
 
-function init_webrtc(socket: Socket) {
+function initWebrtc(socket: Socket) {
   if (
     window.channel &&
     (window.channel.readyState === "open" ||
       window.channel.readyState === "connecting")
   )
     return;
-  register_icecandidate_events(socket);
-  window.channel = create_data_channel();
+  registerIcecandidateEvents(socket);
+  window.channel = createDataChannel();
 
   pc.addEventListener("datachannel", (ev) => {
     console.log("Received data channel event in pc");
 
     ev.channel.addEventListener("message", (ev) => {
       if (!ev.data) return;
-      const decoded = decoder.decode(ev.data);
-      const resp = JSON.parse(decoded) as { label: string; data: unknown };
-      const event = new CustomWebrtcEvent(resp.label, resp.data);
+      const buffer = new Uint8Array(ev.data);
+      const hashBytes = buffer.slice(buffer.length - hashBufferSize);
+      const data = buffer.slice(0, buffer.length - hashBufferSize);
+      const view = new DataView(hashBytes.buffer);
+      const hash = view.getUint32(0, true);
+      const label = window.labels.get(hash);
+      if (!label) return;
+
+      const event = new CustomWebrtcEvent(eventPrefix + label, data);
       document.dispatchEvent(event);
     });
   });
@@ -87,7 +84,7 @@ function init_webrtc(socket: Socket) {
     if (window.channel) {
       window.channel.close();
     }
-    window.channel = create_data_channel();
+    window.channel = createDataChannel();
     await pc.setRemoteDescription(offer);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -96,29 +93,46 @@ function init_webrtc(socket: Socket) {
   });
 }
 
-export function useWebrtcChannel<T>(label: string, rx: (data: T) => void) {
+export function useWebrtcChannel(
+  label: string,
+  rx: (data: Uint8Array) => void
+) {
   const socket = useSocket();
+
+  const hash = React.useMemo(() => {
+    if (!window.labels) window.labels = new Map();
+    const hash = murmur3(label);
+    window.labels.set(hash, label);
+    return hash;
+  }, [label]);
 
   React.useEffect(() => {
     if (!socket) return;
-    init_webrtc(socket);
+    initWebrtc(socket);
     function handler(e: Event) {
       const rtcEvent = e as CustomWebrtcEvent;
       if (!rtcEvent.data) return;
-      rx(rtcEvent.data as T);
+      rx(rtcEvent.data);
     }
-    document.addEventListener(event_prefix + label, handler);
-    return () => document.removeEventListener(event_prefix + label, handler);
-  }, [label, rx, socket]);
+    document.addEventListener(eventPrefix + label, handler);
+    return () => {
+      document.removeEventListener(eventPrefix + label, handler);
+      window.labels.delete(hash);
+    };
+  }, [hash, label, rx, socket]);
 
   return React.useCallback(
-    (data: T) => {
+    (data: Uint8Array) => {
       if (window.channel && window.channel.readyState === "open") {
-        const str = JSON.stringify({ label: event_prefix + label, data });
-        const encoded = encoder.encode(str);
-        window.channel.send(encoded);
+        const view = new DataView(new ArrayBuffer(hashBufferSize));
+        view.setUint32(0, hash, true);
+        const hashArray = new Uint8Array(view.buffer);
+        const buffer = new Uint8Array(data.length + hashBufferSize);
+        buffer.set(data, 0);
+        buffer.set(hashArray, data.length);
+        window.channel.send(buffer);
       }
     },
-    [label]
+    [hash]
   );
 }

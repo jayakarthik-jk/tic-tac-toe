@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function get_borders(index: number) {
+export function getBorders(index: number) {
   let left, top, right, bottom;
   left = top = right = bottom = false;
   switch (index) {

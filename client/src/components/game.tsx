@@ -3,60 +3,104 @@ import SelectHandlerProvider, { SelectHandler } from "@/context/select-handler";
 import { useWebrtcChannel } from "@/hooks/webrtc";
 import * as React from "react";
 
-export default function Game() {
-  const [total_level] = React.useState(2);
-  const [track, set_track] = React.useState<number[]>([]);
+function getIndexByTrack(track: Uint8Array) {
+  return track.reduce((prev, curr, i) => prev + curr ** i, 0) + 1;
+}
 
-  const send_track = useWebrtcChannel<number[]>(
+function getIndexes(track: Uint8Array) {
+  // converting track to index.
+  const index = getIndexByTrack(track);
+  // extracting array index and byte index from index
+  const arrayIndex = Math.floor(index / 8);
+  const byteIndex = index % (8 * arrayIndex);
+  return [arrayIndex, byteIndex] as const;
+}
+
+function getUpdatedState(
+  mine: Uint8Array,
+  other: Uint8Array,
+  track: Uint8Array
+) {
+  const [arrayIndex, byteIndex] = getIndexes(track);
+  const mineSelected = (mine[arrayIndex] >> byteIndex) % 2 === 1;
+  const otherSelected = (other[arrayIndex] >> byteIndex) % 2 === 1;
+  if (mineSelected || otherSelected) return mine;
+
+  const newMine = new Uint8Array(mine);
+  newMine[arrayIndex] = mine[arrayIndex] | (2 ** byteIndex);
+  return newMine;
+}
+
+export default function Game() {
+  const [totalLevel] = React.useState(1);
+  const [track, setTrack] = React.useState<Uint8Array>(new Uint8Array());
+
+  // const [am_i_x] = React.useState<boolean>(true);
+
+  const [myState, setMyState] = React.useState(
+    () => new Uint8Array(Math.ceil(9 ** totalLevel / 8))
+  );
+
+  const [otherState, setOtherState] = React.useState(
+    () => new Uint8Array(Math.ceil(9 ** totalLevel / 8))
+  );
+
+  React.useEffect(() => console.log(otherState), [otherState]);
+
+  const sendTrack = useWebrtcChannel(
     "movement",
     React.useCallback(
       (data) => {
-        if (data.length === total_level) {
-          console.log("user selected", data, total_level);
-          set_track([]);
+        if (data.length === totalLevel) {
+          setOtherState((otherState) =>
+            getUpdatedState(otherState, myState, data)
+          );
+          setTrack(new Uint8Array());
         } else {
-          set_track(data);
+          setTrack(data);
         }
       },
-      [total_level]
+      [myState, totalLevel]
     )
   );
 
-  // const [game_data, set_game_data] = React.useState<number[]>([]);
-  // const send_game_data = useWebrtcChannel<number[]>("game", set_game_data);
+  const handleSelect: SelectHandler = React.useCallback(
+    (buf) => {
+      setTrack((track) => {
+        const newTrack = new Uint8Array(track.length + 1);
+        newTrack.set(track, 0);
+        newTrack[track.length] = buf[0];
+        sendTrack(newTrack);
+        if (newTrack.length === totalLevel) {
+          setMyState((myState) => getUpdatedState(myState, otherState, track));
+          return new Uint8Array();
+        }
+        return newTrack;
+      });
+    },
+    [otherState, sendTrack, totalLevel]
+  );
+
+  const level = totalLevel - track.length;
 
   // Esc click handler
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      set_track((track) => {
+      setTrack((track) => {
         if (e.key !== "Escape" || track.length === 0) return track;
-        const newTrack = [...track];
-        const exiting = newTrack.pop();
-        console.log("Exiting", exiting);
-        send_track(newTrack);
+        const newTrack = track.slice(0, -1);
+        sendTrack(newTrack);
         return newTrack;
       });
     };
     window.addEventListener("keyup", handler);
     return () => window.removeEventListener("keyup", handler);
-  }, [send_track]);
+  }, [sendTrack]);
 
-  const handle_select: SelectHandler = React.useCallback(
-    (buf) => {
-      set_track((track) => {
-        const newTrack = [...track, buf[0]];
-        send_track(newTrack);
-        if (newTrack.length === total_level) return [];
-        return newTrack;
-      });
-    },
-    [send_track, total_level]
-  );
-  const level = total_level - track.length;
   return (
     <main className="w-svw h-svh overflow-hidden">
       <h1 className="text-center">current level {level}</h1>
-      <SelectHandlerProvider handler={handle_select}>
+      <SelectHandlerProvider handler={handleSelect}>
         <Board level={level} />
       </SelectHandlerProvider>
     </main>

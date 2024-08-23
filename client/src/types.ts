@@ -1,7 +1,7 @@
 export class CustomWebrtcEvent extends Event {
   constructor(
     public label: string,
-    public data: unknown
+    public data: Uint8Array
   ) {
     super(label);
   }
@@ -10,5 +10,6 @@ export class CustomWebrtcEvent extends Event {
 declare global {
   interface Window {
     channel?: RTCDataChannel;
+    labels: Map<number, string>;
   }
 }
