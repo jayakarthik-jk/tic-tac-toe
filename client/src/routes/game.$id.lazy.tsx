@@ -1,10 +1,10 @@
 import Clipboard from "@/components/copy";
 import Game from "@/components/game";
 import { Button } from "@/components/ui/button";
-import { useSocket } from "@/hooks/socket";
+import GameProvider from "@/context/gameProvider";
+import { useSocket } from "@/context/socket";
 import { createLazyFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import toast from "react-hot-toast";
 
 export const Route = createLazyFileRoute("/game/$id")({
   component: () => <GamePage />,
@@ -19,7 +19,6 @@ function GamePage() {
 
   useEffect(() => {
     if (!socket) {
-      toast.error("Unable to create socket connection!");
       return;
     }
     socket.emit("connect-to-game", id);
@@ -60,5 +59,9 @@ function StateLoader({ state, id }: { state: LoadingState; id: string }) {
     );
   }
 
-  return <Game />;
+  return (
+    <GameProvider>
+      <Game />
+    </GameProvider>
+  );
 }

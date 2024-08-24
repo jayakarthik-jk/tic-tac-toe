@@ -1,4 +1,4 @@
-import { useSocket } from "@/hooks/socket";
+import { useSocket } from "@/context/socket";
 import { CustomWebrtcEvent } from "@/types";
 import { murmur3 } from "murmurhash-js";
 import * as React from "react";
@@ -115,11 +115,8 @@ export function useWebrtcChannel(
       rx(rtcEvent.data);
     }
     document.addEventListener(eventPrefix + label, handler);
-    return () => {
-      document.removeEventListener(eventPrefix + label, handler);
-      window.labels.delete(hash);
-    };
-  }, [hash, label, rx, socket]);
+    return () => document.removeEventListener(eventPrefix + label, handler);
+  }, [label, rx, socket]);
 
   return React.useCallback(
     (data: Uint8Array) => {

@@ -12,7 +12,7 @@ export default function Board({ level, track = [] }: BoardProps) {
       {[...Array(9).keys()].map((i) => (
         <Unit
           key={i}
-          track={[i, ...track]}
+          track={[...track, i]}
           level={level}
           primitive={primitive}
         />

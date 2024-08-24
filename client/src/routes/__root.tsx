@@ -1,10 +1,10 @@
-import Provider from "@/context/provider";
+import SocketProvider from "@/context/socket";
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 
 export const Route = createRootRoute({
   component: () => (
-    <Provider>
+    <SocketProvider>
       <Outlet />
-    </Provider>
+    </SocketProvider>
   ),
 });

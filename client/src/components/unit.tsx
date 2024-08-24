@@ -1,4 +1,5 @@
-import { useSelecthandler } from "@/hooks/select-handler";
+import { getIndexes, isSelected, useGameState } from "@/context/gameState";
+import { useTrack } from "@/context/track";
 import { cn, getBorders } from "@/lib/utils";
 import * as React from "react";
 import Board from "./board";
@@ -10,8 +11,24 @@ type UnitProp = {
 };
 
 export default function Unit({ track, level, primitive }: UnitProp) {
-  const borders = React.useMemo(() => getBorders(track[0]), [track]);
-  const handleSelect = useSelecthandler();
+  const borders = React.useMemo(
+    () => getBorders(track[track.length - 1]),
+    [track]
+  );
+  const { mine, other } = useGameState();
+
+  const label = React.useMemo(() => {
+    const [arrayIndex, byteIndex] = getIndexes(new Uint8Array(track));
+    if (isSelected(arrayIndex, byteIndex, mine)) {
+      return "X";
+    }
+    if (isSelected(arrayIndex, byteIndex, other)) {
+      return "O";
+    }
+    return " ";
+  }, [mine, other, track]);
+
+  const { handleSelect } = useTrack();
 
   return (
     <div
@@ -29,7 +46,7 @@ export default function Unit({ track, level, primitive }: UnitProp) {
         handleSelect(track);
       }}
     >
-      {primitive ? " " : <Board level={level - 1} track={track} />}
+      {primitive ? label : <Board level={level - 1} track={track} />}
     </div>
   );
 }
