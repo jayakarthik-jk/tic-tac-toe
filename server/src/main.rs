@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let static_assets = ServeDir::new("static/assets/");
 
     let (layer, io) = SocketIo::new_layer();
-    io.ns("/", |socket| on_connect(socket));
+    io.ns("/", on_connect);
 
     let app = Router::new()
         .with_state(io)

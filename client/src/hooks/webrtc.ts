@@ -95,10 +95,10 @@ function initWebrtc(socket: Socket) {
 
 export function useWebrtcChannel(
   label: string,
-  rx: (data: Uint8Array) => void
+  rx: (data: Uint8Array) => void,
 ) {
   const socket = useSocket();
-
+  const [pending, setPending] = React.useState<Uint8Array[]>([]);
   const hash = React.useMemo(() => {
     if (!window.labels) window.labels = new Map();
     const hash = murmur3(label);
@@ -106,30 +106,43 @@ export function useWebrtcChannel(
     return hash;
   }, [label]);
 
+  const tx = React.useCallback(
+    (data: Uint8Array) => {
+      if (!window.channel || window.channel.readyState !== "open") {
+        return setPending((existing) => [...existing, data]);
+      }
+      const view = new DataView(new ArrayBuffer(hashBufferSize));
+      view.setUint32(0, hash, true);
+      const hashArray = new Uint8Array(view.buffer);
+      const buffer = new Uint8Array(data.length + hashBufferSize);
+      buffer.set(data, 0);
+      buffer.set(hashArray, data.length);
+      window.channel.send(buffer);
+    },
+    [hash],
+  );
+
   React.useEffect(() => {
     if (!socket) return;
     initWebrtc(socket);
-    function handler(e: Event) {
+    const handler = (e: Event) => {
       const rtcEvent = e as CustomWebrtcEvent;
       if (!rtcEvent.data) return;
       rx(rtcEvent.data);
-    }
-    document.addEventListener(eventPrefix + label, handler);
-    return () => document.removeEventListener(eventPrefix + label, handler);
-  }, [label, rx, socket]);
+    };
+    const handlePending = () => {
+      pending.forEach(tx);
+      setPending([]);
+    };
 
-  return React.useCallback(
-    (data: Uint8Array) => {
-      if (window.channel && window.channel.readyState === "open") {
-        const view = new DataView(new ArrayBuffer(hashBufferSize));
-        view.setUint32(0, hash, true);
-        const hashArray = new Uint8Array(view.buffer);
-        const buffer = new Uint8Array(data.length + hashBufferSize);
-        buffer.set(data, 0);
-        buffer.set(hashArray, data.length);
-        window.channel.send(buffer);
-      }
-    },
-    [hash]
-  );
+    document.addEventListener(eventPrefix + label, handler);
+    pc.addEventListener("datachannel", handlePending);
+
+    return () => {
+      document.removeEventListener(eventPrefix + label, handler);
+      pc.removeEventListener("datachannel", handlePending);
+    };
+  }, [label, pending, rx, socket, tx]);
+
+  return tx;
 }
