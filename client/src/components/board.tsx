@@ -1,9 +1,10 @@
-import { getIndexes, isSelected } from "@/lib/gameLogic";
+import { bufferToTrack, getIndexes, isSelected } from "@/lib/gameLogic";
 import Unit from "./unit";
 import useLevelBasedGameState from "@/hooks/gameStateByLevel";
 import * as React from "react";
 import { useTrack } from "@/context/track";
-import { queueSize } from "@/lib/constants";
+import { queueSize, totalLevel } from "@/lib/constants";
+import { useGameState } from "@/context/gameState";
 
 type BoardProps = {
   level: number;
@@ -13,20 +14,29 @@ type BoardProps = {
 export default function Board({ level, track = [] }: BoardProps) {
   const [queue, setQueue] = React.useState<number[]>([]);
   const { mine, other } = useLevelBasedGameState();
-  const { set, unset } = useTrack();
+  const { updateTrack, track: absoluteTrack } = useTrack();
+  const { set, unset } = useGameState();
   const primitive = level === 1;
 
   const handleClick = React.useCallback(
-    (unitTrack: number[]) => {
+    (buffer: number[]) => {
       const newQueue = [...queue];
+
       if (queue.length >= queueSize) {
-        unset([...track, newQueue.shift()!]);
+        unset(bufferToTrack([...track, newQueue.shift()!], absoluteTrack));
       }
-      newQueue.push(unitTrack[unitTrack.length - 1]);
+
+      newQueue.push(buffer[buffer.length - 1]);
       setQueue(newQueue);
-      set(unitTrack);
+      let newTrack = bufferToTrack(buffer, absoluteTrack);
+      if (newTrack.length === totalLevel) {
+        set(newTrack);
+        newTrack = new Uint8Array();
+      }
+
+      updateTrack(newTrack);
     },
-    [queue, set, track, unset]
+    [absoluteTrack, queue, set, track, unset, updateTrack]
   );
 
   function labelOf(index: number) {

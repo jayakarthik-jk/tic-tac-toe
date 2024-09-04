@@ -5,6 +5,13 @@ export function getIndexByTrack(track: Uint8Array) {
   );
 }
 
+export function bufferToTrack(buffer: number[], oldTrack: Uint8Array) {
+  const newTrack = new Uint8Array(oldTrack.length + 1);
+  newTrack.set(oldTrack);
+  newTrack[oldTrack.length] = buffer[0];
+  return newTrack;
+}
+
 export function getIndexes(track: Uint8Array) {
   // converting track to index.
   const index = getIndexByTrack(track);
@@ -20,17 +27,6 @@ export function isSelected(
   state: Uint8Array
 ) {
   return (state[arrayIndex] >> byteIndex) % 2 === 1;
-}
-
-export function isValidTrackToSelect(
-  track: Uint8Array,
-  mine: Uint8Array,
-  other: Uint8Array
-) {
-  const [arrayIndex, byteIndex] = getIndexes(track);
-  const mineSelected = isSelected(arrayIndex, byteIndex, mine);
-  const otherSelected = isSelected(arrayIndex, byteIndex, other);
-  return !mineSelected && !otherSelected;
 }
 
 export function getUpdatedState(

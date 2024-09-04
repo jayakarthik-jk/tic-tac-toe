@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function unconfigured(): never {
+  throw "Game State context not configured";
+}
+
 export function getBorders(index: number) {
   let left, top, right, bottom;
   left = top = right = bottom = false;

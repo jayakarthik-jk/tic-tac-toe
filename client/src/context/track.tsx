@@ -1,104 +1,33 @@
 import { useWebrtcChannel } from "@/hooks/webrtc";
 import * as React from "react";
-import { useGameState } from "./gameState";
-import { getUpdatedState, isValidTrackToSelect } from "@/lib/gameLogic";
-
-type SelectHandler = (index: number[]) => void;
+import { totalLevel } from "@/lib/constants";
+import { unconfigured } from "@/lib/utils";
 
 type TrackContext = {
   track: Uint8Array;
-  set: SelectHandler;
-  unset: SelectHandler;
+  updateTrack: (track: Uint8Array) => void;
   level: number;
 };
 
 export const TrackContext = React.createContext<TrackContext>({
   level: 0,
   track: new Uint8Array(),
-  set: () => {
-    throw "Track context not configured";
-  },
-  unset: () => {
-    throw "Track context not configured";
-  },
+  updateTrack: unconfigured,
 });
 
 export const useTrack = () => React.useContext(TrackContext);
 
-type TrackProviderProps = { totalLevel: number };
-export default function TrackProvider({
-  totalLevel,
-  children,
-}: React.PropsWithChildren<TrackProviderProps>) {
+export default function TrackProvider({ children }: React.PropsWithChildren) {
   const [track, setTrack] = React.useState(new Uint8Array());
-  const { mine, other, setMine, setOther } = useGameState();
-
-  const sendSetSignal = useWebrtcChannel(
-    "set-signal",
-    React.useCallback(
-      (track) => {
-        setOther((state) => getUpdatedState(state, track, true));
-      },
-      [setOther]
-    )
-  );
-
-  const sendUnSetSignal = useWebrtcChannel(
-    "unset-signal",
-    React.useCallback(
-      (track) => {
-        setOther((state) => getUpdatedState(state, track, false));
-      },
-      [setOther]
-    )
-  );
 
   const sendTrack = useWebrtcChannel("track", setTrack);
 
-  const handleSelect = React.useCallback(
-    (buf: number[], isSet: boolean) => {
-      let newTrack = new Uint8Array(track.length + 1);
-      newTrack.set(track);
-      newTrack[track.length] = buf[0];
-
-      if (newTrack.length === totalLevel) {
-        if (!isValidTrackToSelect(newTrack, mine, other) && isSet) {
-          return;
-        }
-
-        if (isSet) {
-          sendSetSignal(newTrack);
-        } else {
-          sendUnSetSignal(newTrack);
-        }
-
-        setMine(getUpdatedState(mine, newTrack, isSet));
-        newTrack = new Uint8Array();
-      }
-
-      setTrack(newTrack);
-      sendTrack(newTrack);
+  const updateTrack = React.useCallback(
+    (track: Uint8Array) => {
+      sendTrack(track);
+      setTrack(track);
     },
-    [
-      mine,
-      other,
-      track,
-      sendTrack,
-      sendSetSignal,
-      sendUnSetSignal,
-      setMine,
-      totalLevel,
-    ]
-  );
-
-  const set: SelectHandler = React.useCallback(
-    (buf) => handleSelect(buf, true),
-    [handleSelect]
-  );
-
-  const unset: SelectHandler = React.useCallback(
-    (buf) => handleSelect(buf, false),
-    [handleSelect]
+    [sendTrack]
   );
 
   // Esc click handler
@@ -107,17 +36,17 @@ export default function TrackProvider({
       setTrack((track) => {
         if (e.key !== "Escape" || track.length === 0) return track;
         const newTrack = track.slice(0, -1);
-        sendSetSignal(newTrack);
+        sendTrack(newTrack);
         return newTrack;
       });
     };
     window.addEventListener("keyup", handler);
     return () => window.removeEventListener("keyup", handler);
-  }, [sendSetSignal]);
+  }, [sendTrack]);
 
   return (
     <TrackContext.Provider
-      value={{ track, set, unset, level: totalLevel - track.length }}
+      value={{ track, updateTrack, level: totalLevel - track.length }}
     >
       {children}
     </TrackContext.Provider>
